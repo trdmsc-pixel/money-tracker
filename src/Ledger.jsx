@@ -691,7 +691,14 @@ export default function Ledger() {
         }
       }
     } catch (err) {
-      setAuthError(err.message || 'Authentication failed. Check your credentials.');
+      const msg = err.message || '';
+      if (msg.toLowerCase().includes('signups not allowed') || msg.toLowerCase().includes('sign-up is not allowed')) {
+        setAuthError(
+          "Sign-ups are disabled in your Supabase project settings. Please turn ON 'Allow new users to sign up' under Supabase Dashboard > Authentication > Providers > Email, or tap 'Continue in Guest Mode' below."
+        );
+      } else {
+        setAuthError(msg || 'Authentication failed. Check your credentials.');
+      }
     } finally {
       setAuthSubmitting(false);
     }
