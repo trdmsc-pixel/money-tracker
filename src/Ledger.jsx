@@ -284,7 +284,7 @@ function GlassCard({
         }}
       />
 
-      <div style={{ position: 'relative', zIndex: 2 }}>{children}</div>
+      {children}
     </div>
   );
 }
@@ -406,7 +406,25 @@ export default function Ledger() {
   const [authPassword, setAuthPassword] = useState('');
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const [authError, setAuthError] = useState('');
-  const [guestMode, setGuestMode] = useState(false);
+  const [guestMode, setGuestMode] = useState(() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      if (p.get('guest') === '1' || p.get('mode') === 'guest') return true;
+      return localStorage.getItem('studio_ledger_guest') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      if (guestMode) {
+        localStorage.setItem('studio_ledger_guest', 'true');
+      } else {
+        localStorage.removeItem('studio_ledger_guest');
+      }
+    } catch {}
+  }, [guestMode]);
 
   // App state
   const [accounts, setAccounts] = useState([]);
@@ -437,7 +455,14 @@ export default function Ledger() {
 
   const [loading, setLoading] = useState(true);
   const [toastMessage, setToastMessage] = useState(null);
-  const [activeTab, setActiveTab] = useState('home');
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const t = p.get('tab');
+      if (['home', 'add', 'money', 'insights', 'share'].includes(t)) return t;
+    } catch {}
+    return 'home';
+  });
 
   // Selected month state
   const today = new Date();
@@ -555,12 +580,16 @@ export default function Ledger() {
 
   // Check notification permission on launch and prompt if default
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      if (Notification.permission === 'default') {
-        const timer = setTimeout(() => setShowPermissionPrompt(true), 1200);
-        return () => clearTimeout(timer);
+    try {
+      const p = new URLSearchParams(window.location.search);
+      if (p.get('prompt') === '0') return;
+      if (typeof window !== 'undefined' && 'Notification' in window) {
+        if (Notification.permission === 'default') {
+          const timer = setTimeout(() => setShowPermissionPrompt(true), 1200);
+          return () => clearTimeout(timer);
+        }
       }
-    }
+    } catch {}
   }, []);
 
   // ==========================================================================
@@ -991,6 +1020,121 @@ export default function Ledger() {
   }, [transactions, settings.categories]);
 
   // ==========================================================================
+  // DYNAMIC INTELLIGENCE INSIGHTS
+  // ==========================================================================
+  const dynamicInsights = useMemo(() => {
+    const list = [];
+
+    // 1. Dribble Transfer Frequency Insight
+    if (transferStats.count >= 4) {
+      list.push({
+        id: 'ins-transfers-high',
+        title: 'High Dribble Frequency Detected',
+        body: `You pulled money from company to personal ${transferStats.count} times this month (totaling ${formatINR(transferStats.totalAmount)}). Set a single fixed transfer date to protect company working capital.`,
+        icon: AlertTriangle,
+        color: '#FF6B8A',
+      });
+    } else if (transferStats.count === 1) {
+      list.push({
+        id: 'ins-transfers-healthy',
+        title: 'Clean Transfer Discipline',
+        body: `Exactly 1 company-to-personal pull of ${formatINR(transferStats.totalAmount)} this month. Keep this single-draw habit consistent.`,
+        icon: ShieldCheck,
+        color: '#B8F135',
+      });
+    } else if (transferStats.count === 0) {
+      list.push({
+        id: 'ins-transfers-zero',
+        title: 'Zero Company Pulls Logged',
+        body: 'No transfers from company to personal account logged for this period yet.',
+        icon: Sparkles,
+        color: '#F5C542',
+      });
+    } else {
+      list.push({
+        id: 'ins-transfers-moderate',
+        title: `${transferStats.count} Pulls Logged This Month`,
+        body: `Total pulled so far: ${formatINR(transferStats.totalAmount)}. Try to make this pull last through the rest of the month.`,
+        icon: TrendingUp,
+        color: '#F5C542',
+      });
+    }
+
+    // 2. Runway & Safety Net Insight
+    if (Number(runwayData.monthsCovered) < 3) {
+      list.push({
+        id: 'ins-runway-low',
+        title: 'Safety Pot Under 3 Months',
+        body: `Your safety reserves currently cover ${runwayData.monthsCovered} months of burn (${formatINR(runwayData.avgMonthlySpend)}/mo). Target at least 6 months to buffer irregular filmmaker project payouts.`,
+        icon: ShieldCheck,
+        color: '#FF6B8A',
+      });
+    } else {
+      list.push({
+        id: 'ins-runway-good',
+        title: `${runwayData.monthsCovered} Months Runway Intact`,
+        body: `Your safety pot has sufficient cushion to absorb delayed client milestone payments.`,
+        icon: ShieldCheck,
+        color: '#B8F135',
+      });
+    }
+
+    // 3. AI Tools & Production Subscriptions
+    const aiSpend = transactions
+      .filter((t) => t.type === 'expense' && (t.category === 'cat-aitools' || t.category === 'cat-subs'))
+      .reduce((sum, t) => sum + (Number(t.inrAmount) || Number(t.amount) || 0), 0);
+
+    if (aiSpend > 0) {
+      list.push({
+        id: 'ins-ai-spend',
+        title: 'Creative AI Stack Expenditure',
+        body: `₹${aiSpend.toLocaleString('en-IN')} allocated to AI generation software & studio subscriptions this period.`,
+        icon: Cpu,
+        color: '#8FB4FF',
+      });
+    }
+
+    // 4. Monthly Cap Check
+    if (spendGaugeData.isOverLimit) {
+      list.push({
+        id: 'ins-over-cap',
+        title: 'Monthly Spending Cap Exceeded',
+        body: `Personal expenses have surpassed your monthly budget cap by ${formatINR(spendGaugeData.monthExpenses - spendGaugeData.totalCaps)}.`,
+        icon: AlertTriangle,
+        color: '#FF6B8A',
+      });
+    }
+
+    return list;
+  }, [transferStats, runwayData, transactions, spendGaugeData]);
+
+  // ==========================================================================
+  // ADVISOR REPORT COPIER
+  // ==========================================================================
+  const handleCopyReport = async () => {
+    const monthName = MONTH_NAMES[selectedMonth];
+    const reportText = `📊 ${settings.studioName} — Financial Summary (${monthName} ${selectedYear})
+• Total Net Worth: ${formatINR(netWorthData.total)}
+• Company → Personal Pulls: ${transferStats.count} pulls (${formatINR(transferStats.totalAmount)})
+• Monthly Personal Spend: ${formatINR(spendGaugeData.monthExpenses)}
+• Safety Pot Reserves: ${runwayData.monthsCovered} months runway (${formatINR(runwayData.safetyBalance)})
+• Status: ${transferStats.count > 3 ? '⚠️ High Pull Frequency' : '✅ Disciplined'}
+
+Generated via Studio Ledger: https://money-tracker-ebon-six.vercel.app`;
+
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(reportText);
+        showToast('Advisor report copied to clipboard!');
+      } else {
+        showToast('Report copied to clipboard.');
+      }
+    } catch (err) {
+      showToast('Summary report generated.');
+    }
+  };
+
+  // ==========================================================================
   // TRANSACTION SAVE HANDLER (<8s logging speed)
   // ==========================================================================
   const handleSaveTransaction = () => {
@@ -1285,7 +1429,7 @@ export default function Ledger() {
             TAB 1: HOME
         ==================================================================== */}
         {activeTab === 'home' && (
-          <div className="space-y-4">
+          <div key="home" className="tab-content space-y-4">
             {/* Top Bar with SMS Ingest & User status */}
             <div className="flex items-center justify-between pt-2 pb-1">
               <div>
@@ -1303,7 +1447,7 @@ export default function Ledger() {
                 <button
                   onClick={handleAutoFetchSMS}
                   disabled={isScanningSMS}
-                  className="relative p-2.5 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 text-white transition-all active:scale-95 flex items-center justify-center shadow-lg"
+                  className="relative p-2.5 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 text-white transition-all active:scale-95 flex items-center justify-center shadow-lg cursor-pointer"
                   title="Auto-Fetch SMS from Phone"
                 >
                   <Zap className={`w-4 h-4 ${isScanningSMS ? 'animate-spin text-[#B8F135]' : 'text-[#F5C542]'}`} />
@@ -1319,7 +1463,7 @@ export default function Ledger() {
                     const nextTheme = isDark ? 'light' : 'dark';
                     updateData({ settings: { ...settings, theme: nextTheme } });
                   }}
-                  className={`p-2.5 rounded-full border transition-all active:scale-95 ${
+                  className={`p-2.5 rounded-full border transition-all active:scale-95 cursor-pointer ${
                     isDark ? 'bg-white/5 border-white/10 text-white' : 'bg-black/5 border-black/10 text-black'
                   }`}
                   aria-label="Toggle Theme"
@@ -1333,25 +1477,25 @@ export default function Ledger() {
             <GlassCard
               theme={settings.theme}
               rimVariant="gold"
-              className="p-3.5 flex items-center justify-between cursor-pointer"
+              className="p-3.5 flex items-center justify-between gap-3 cursor-pointer"
               onClick={handleAutoFetchSMS}
             >
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-[#F5C542]/20 flex items-center justify-center text-[#F5C542]">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className="w-9 h-9 shrink-0 rounded-full bg-[#F5C542]/20 flex items-center justify-center text-[#F5C542]">
                   <Zap className="w-4 h-4" />
                 </div>
-                <div>
-                  <span className="text-xs font-bold text-white block">
+                <div className="min-w-0 flex-1">
+                  <span className="text-xs font-bold text-white block truncate">
                     ⚡ Auto-Fetch Bank SMS
                   </span>
-                  <span className="text-[11px] text-[#7E8699]">
+                  <span className="text-[11px] text-[#7E8699] block truncate">
                     {pendingSMS.length > 0
                       ? `${pendingSMS.length} transactions pending approval`
                       : 'Scan phone messages for new debits & transfers'}
                   </span>
                 </div>
               </div>
-              <span className="text-xs font-bold text-[#F5C542] px-2.5 py-1 rounded-full bg-[#F5C542]/10">
+              <span className="text-xs font-bold text-[#F5C542] px-2.5 py-1 rounded-full bg-[#F5C542]/10 shrink-0">
                 {isScanningSMS ? 'Scanning...' : 'Fetch'}
               </span>
             </GlassCard>
@@ -1536,19 +1680,19 @@ export default function Ledger() {
             </GlassCard>
 
             {/* Runway Strip */}
-            <GlassCard theme={settings.theme} className="py-3.5 px-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <ShieldCheck className="w-5 h-5 text-[#B8F135]" />
-                <div>
-                  <span className="text-xs font-semibold block">
+            <GlassCard theme={settings.theme} className="py-3.5 px-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <ShieldCheck className="w-5 h-5 text-[#B8F135] shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <span className="text-xs font-semibold block truncate">
                     Safety pot covers {runwayData.monthsCovered} months
                   </span>
-                  <span className="text-[11px] text-[#7E8699]">
+                  <span className="text-[11px] text-[#7E8699] block truncate">
                     at current burn of {formatINR(runwayData.avgMonthlySpend)}/mo
                   </span>
                 </div>
               </div>
-              <span className="text-xs font-bold metallic-numeral">
+              <span className="text-xs font-bold metallic-numeral shrink-0">
                 {formatINR(runwayData.safetyBalance)}
               </span>
             </GlassCard>
@@ -1559,7 +1703,7 @@ export default function Ledger() {
             TAB 2: ADD SCREEN
         ==================================================================== */}
         {activeTab === 'add' && (
-          <div className="space-y-4 pt-2">
+          <div key="add" className="tab-content space-y-4 pt-2">
             <h1 className="text-xl font-bold tracking-tight px-1">Log Transaction</h1>
 
             <div className="grid grid-cols-4 gap-1 p-1 rounded-2xl bg-white/5 border border-white/10">
@@ -1639,7 +1783,7 @@ export default function Ledger() {
             TAB 3: MONEY & SETTINGS (WITH SUPABASE SYNC STATUS)
         ==================================================================== */}
         {activeTab === 'money' && (
-          <div className="space-y-6 pt-2">
+          <div key="money" className="tab-content space-y-6 pt-2">
             <h1 className="text-xl font-bold tracking-tight px-1">Money & Settings</h1>
 
             {/* SUPABASE CLOUD USER ACCOUNT CARD */}
@@ -1765,7 +1909,7 @@ export default function Ledger() {
             TAB 4: INSIGHTS
         ==================================================================== */}
         {activeTab === 'insights' && (
-          <div className="space-y-4 pt-2">
+          <div key="insights" className="tab-content space-y-4 pt-2">
             <h1 className="text-xl font-bold tracking-tight px-1">Intelligence</h1>
             <div className="space-y-3">
               {dynamicInsights.map((ins) => {
@@ -1788,7 +1932,7 @@ export default function Ledger() {
             TAB 5: SHARE
         ==================================================================== */}
         {activeTab === 'share' && (
-          <div className="space-y-4 pt-2">
+          <div key="share" className="tab-content space-y-4 pt-2">
             <h1 className="text-xl font-bold tracking-tight px-1">Advisor Share</h1>
             <div
               style={{
@@ -1833,8 +1977,8 @@ export default function Ledger() {
           AUTOMATIC LAUNCH PERMISSION PROMPT MODAL
       ==================================================================== */}
       {showPermissionPrompt && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
-          <GlassCard theme="dark" rimVariant="gold" className="w-full max-w-sm p-6 text-center space-y-4 shadow-2xl">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 modal-backdrop">
+          <GlassCard theme="dark" rimVariant="gold" className="w-full max-w-sm p-6 text-center space-y-4 shadow-2xl modal-card">
             <div className="w-14 h-14 rounded-2xl bg-[#F5C542]/20 flex items-center justify-center text-[#F5C542] mx-auto">
               <Bell className="w-7 h-7 animate-bounce" />
             </div>
@@ -1847,13 +1991,13 @@ export default function Ledger() {
             <div className="flex gap-2 pt-2">
               <button
                 onClick={() => setShowPermissionPrompt(false)}
-                className="flex-1 py-3 rounded-full text-xs font-semibold bg-white/5 hover:bg-white/10 text-[#7E8699]"
+                className="flex-1 py-3 rounded-full text-xs font-semibold bg-white/5 hover:bg-white/10 text-[#7E8699] cursor-pointer"
               >
                 Not Now
               </button>
               <button
                 onClick={requestNotificationPermission}
-                className="flex-1 py-3 rounded-full text-xs font-bold bg-[#F5C542] text-black shadow-lg shadow-[#F5C542]/20 active:scale-95"
+                className="flex-1 py-3 rounded-full text-xs font-bold bg-[#F5C542] text-black shadow-lg shadow-[#F5C542]/20 active:scale-95 cursor-pointer"
               >
                 Allow Alerts
               </button>
@@ -1866,7 +2010,7 @@ export default function Ledger() {
           SMS INGEST & PENDING APPROVALS MODAL
       ==================================================================== */}
       {showSMSModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-end justify-center p-0">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-end justify-center p-0 modal-backdrop">
           <div
             style={{
               backgroundColor: isDark ? '#0E1018' : '#FFFFFF',
@@ -1874,7 +2018,7 @@ export default function Ledger() {
               borderTopRightRadius: '32px',
               border: '1px solid rgba(255,255,255,0.12)',
             }}
-            className="w-full max-w-[430px] p-5 space-y-4 max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom duration-300"
+            className="w-full max-w-[430px] p-5 space-y-4 max-h-[90vh] overflow-y-auto modal-sheet"
           >
             <div className="flex items-center justify-between pb-2 border-b border-white/10">
               <div className="flex items-center gap-2">
@@ -2027,7 +2171,7 @@ export default function Ledger() {
 
       {/* Global Toast */}
       {toastMessage && (
-        <div className="fixed top-5 left-0 right-0 max-w-[340px] mx-auto z-50 pointer-events-none animate-in fade-in slide-in-from-top-4 duration-200">
+        <div className="fixed top-5 left-0 right-0 max-w-[340px] mx-auto z-50 pointer-events-none tab-content">
           <div className="bg-[#0E1018]/90 border border-white/15 backdrop-blur-xl text-white text-xs font-semibold py-2.5 px-4 rounded-full shadow-2xl flex items-center justify-center gap-2">
             <Sparkles className="w-3.5 h-3.5 text-[#F5C542]" />
             <span>{toastMessage}</span>
