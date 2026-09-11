@@ -490,6 +490,13 @@ export default function Ledger() {
   // ==========================================================================
   useEffect(() => {
     let isMounted = true;
+    const safetyTimer = setTimeout(() => {
+      if (isMounted) {
+        setAuthLoading(false);
+        setLoading(false);
+      }
+    }, 800);
+
     async function checkAuthAndLoad() {
       try {
         const user = await getCurrentUser();
@@ -531,6 +538,7 @@ export default function Ledger() {
       } catch (err) {
         console.error('Initialization error:', err);
       } finally {
+        clearTimeout(safetyTimer);
         if (isMounted) {
           setAuthLoading(false);
           setLoading(false);
@@ -541,6 +549,7 @@ export default function Ledger() {
     checkAuthAndLoad();
     return () => {
       isMounted = false;
+      clearTimeout(safetyTimer);
     };
   }, []);
 

@@ -54,13 +54,13 @@ export async function signOut() {
 }
 
 /**
- * Get current session user safely with timeout to prevent mobile hang
+ * Get current session user safely with ultra-fast timeout (<600ms)
  */
 export async function getCurrentUser() {
   try {
     const sessionPromise = supabase.auth.getSession();
     const timeoutPromise = new Promise((resolve) =>
-      setTimeout(() => resolve({ data: { session: null }, error: null }), 2500)
+      setTimeout(() => resolve({ data: { session: null }, error: null }), 600)
     );
     const { data, error } = await Promise.race([sessionPromise, timeoutPromise]);
     if (error || !data?.session?.user) {
@@ -95,7 +95,7 @@ export async function loadUserData(userId) {
       .maybeSingle();
 
     const timeoutPromise = new Promise((resolve) =>
-      setTimeout(() => resolve({ data: null, error: null }), 4000)
+      setTimeout(() => resolve({ data: null, error: null }), 2000)
     );
 
     const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
