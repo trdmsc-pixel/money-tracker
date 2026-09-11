@@ -1092,11 +1092,30 @@ export default function Ledger() {
   };
 
   // ==========================================================================
+  // RENDER: LOADING STATE
+  // ==========================================================================
+  if (authLoading) {
+    return (
+      <div className="min-h-screen w-full bg-[#08090C] text-[#F4F6FB] flex items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-[#F5C542] flex items-center justify-center text-black font-black text-2xl shadow-lg shadow-[#F5C542]/25 animate-pulse">
+            L
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-base font-bold text-white tracking-wide">Studio Ledger</h2>
+            <p className="text-xs text-[#7E8699] font-medium tracking-wider uppercase">Loading Workspace...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================================================
   // RENDER: SUPABASE AUTH SCREEN (If not authenticated and not guest)
   // ==========================================================================
-  if (!currentUser && !guestMode && !authLoading) {
+  if (!currentUser && !guestMode) {
     return (
-      <div className="min-h-screen bg-[#08090C] text-[#F4F6FB] flex items-center justify-center p-4">
+      <div className="min-h-screen w-full bg-[#08090C] text-[#F4F6FB] flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
         <style>{`
           @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600;700&display=swap');
           .metallic-numeral {
@@ -1106,14 +1125,14 @@ export default function Ledger() {
             font-family: 'Barlow Condensed', sans-serif;
           }
         `}</style>
-        <GlassCard theme="dark" className="w-full max-w-sm p-6 space-y-5">
+        <GlassCard theme="dark" className="w-full max-w-sm p-6 space-y-5 my-auto">
           <div className="text-center space-y-1">
             <div className="w-12 h-12 rounded-2xl bg-[#F5C542] flex items-center justify-center text-black font-black text-xl mx-auto shadow-lg shadow-[#F5C542]/20">
               L
             </div>
             <h1 className="text-2xl font-bold text-white tracking-tight">Studio Ledger</h1>
             <p className="text-xs text-[#7E8699]">
-              {authMode === 'login' ? 'Sign in to access your personal ledger' : 'Create an account on Supabase'}
+              {authMode === 'login' ? 'Sign in to sync your personal ledger across devices' : 'Create an account on Supabase'}
             </p>
           </div>
 
@@ -1179,22 +1198,26 @@ export default function Ledger() {
           <button
             onClick={handleAuthSubmit}
             disabled={authSubmitting}
-            className="w-full py-3.5 rounded-full font-bold text-sm bg-[#F5C542] text-black active:scale-95 transition-all shadow-lg shadow-[#F5C542]/20 flex items-center justify-center gap-2"
+            className="w-full py-3.5 rounded-full font-bold text-sm bg-[#F5C542] text-black active:scale-95 transition-all shadow-lg shadow-[#F5C542]/20 flex items-center justify-center gap-2 cursor-pointer"
           >
             {authSubmitting ? (
               <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
             ) : (
-              <span>{authMode === 'login' ? 'Sign In' : 'Create Account'}</span>
+              <span>{authMode === 'login' ? 'Sign In to Ledger' : 'Create Account'}</span>
             )}
           </button>
 
-          <div className="text-center pt-1">
+          <div className="pt-2 border-t border-white/10 text-center">
             <button
               onClick={() => setGuestMode(true)}
-              className="text-xs text-[#7E8699] hover:text-white transition-colors"
+              className="w-full py-2.5 px-3 rounded-xl text-xs font-semibold text-[#8FB4FF] bg-[#8FB4FF]/10 hover:bg-[#8FB4FF]/20 border border-[#8FB4FF]/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
             >
-              Or continue in local / offline mode →
+              <span>⚡ Continue in Guest / Offline Mode</span>
+              <span>→</span>
             </button>
+            <p className="text-[10px] text-[#7E8699] mt-1.5">
+              No account needed. Data is stored safely on your phone.
+            </p>
           </div>
         </GlassCard>
       </div>

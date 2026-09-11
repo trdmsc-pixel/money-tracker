@@ -10,57 +10,102 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
  * Sign up new user with email and password
  */
 export async function signUp(email, password) {
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-  });
-  if (error) throw error;
-  return data;
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Sign up error:', err);
+    throw err;
+  }
 }
 
 /**
  * Sign in existing user
  */
 export async function signIn(email, password) {
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
-  if (error) throw error;
-  return data;
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Sign in error:', err);
+    throw err;
+  }
 }
 
 /**
  * Sign out current user
  */
 export async function signOut() {
-  const { error } = await supabase.auth.signOut();
-  if (error) throw error;
+  try {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+  } catch (err) {
+    console.error('Sign out error:', err);
+    throw err;
+  }
 }
 
 /**
- * Get current session user
+ * Get current session user safely with timeout to prevent mobile hang
  */
 export async function getCurrentUser() {
-  const { data: { user } } = await supabase.auth.getUser();
-  return user;
+  try {
+    const sessionPromise = supabase.auth.getSession();
+    const timeoutPromise = new Promise((resolve) =>
+      setTimeout(() => resolve({ data: { session: null }, error: null }), 2500)
+    );
+    const { data, error } = await Promise.race([sessionPromise, timeoutPromise]);
+    if (error || !data?.session?.user) {
+      return null;
+    }
+    return data.session.user;
+  } catch (err) {
+    console.warn('Could not read Supabase session:', err);
+    return null;
+  }
+}
+
+/**
+ * Listen to auth state changes
+ */
+export function onAuthStateChange(callback) {
+  return supabase.auth.onAuthStateChange((event, session) => {
+    callback(session?.user || null);
+  });
 }
 
 /**
  * Load cloud ledger data for a user
  */
 export async function loadUserData(userId) {
+  if (!userId) return null;
   try {
-    const { data, error } = await supabase
+    const queryPromise = supabase
       .from('ledger_user_data')
       .select('*')
       .eq('user_id', userId)
       .maybeSingle();
 
-    if (error) throw error;
+    const timeoutPromise = new Promise((resolve) =>
+      setTimeout(() => resolve({ data: null, error: null }), 4000)
+    );
+
+    const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
+    if (error) {
+      console.warn('Error fetching cloud data:', error);
+      return null;
+    }
     return data;
   } catch (err) {
-    console.error('Error loading cloud user data:', err);
+    console.warn('Error loading cloud user data:', err);
     return null;
   }
 }
@@ -69,6 +114,7 @@ export async function loadUserData(userId) {
  * Save cloud ledger data for a user
  */
 export async function saveUserData(userId, payload) {
+  if (!userId) return false;
   try {
     const { error } = await supabase
       .from('ledger_user_data')
